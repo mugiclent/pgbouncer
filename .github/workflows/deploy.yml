@@ -1,0 +1,63 @@
+name: Deploy PgBouncer
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key:      ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -e
+            export PATH="$HOME/.local/bin:$PATH"
+
+            DEPLOY_DIR="$HOME/katisha/pgbouncer"
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+
+            if [ -d "$DEPLOY_DIR/.git" ]; then
+              cd "$DEPLOY_DIR"
+              git pull origin main
+            else
+              mkdir -p "$HOME/katisha"
+              git clone "$REPO_URL" "$DEPLOY_DIR"
+              cd "$DEPLOY_DIR"
+            fi
+
+            # Authenticate with Infisical and get a short-lived token.
+            INFISICAL_TOKEN=$(infisical login \
+              --method=universal-auth \
+              --client-id=${{ secrets.INFISICAL_CLIENT_ID }} \
+              --client-secret=${{ secrets.INFISICAL_CLIENT_SECRET }} \
+              --domain=http://localhost:8080 \
+              --plain --silent)
+
+            # Inject secrets and run deploy.sh.
+            # deploy.sh generates userlist.txt and either SIGHUPs the running
+            # container (no restart, no dropped connections) or starts it fresh.
+            infisical run \
+              --token="$INFISICAL_TOKEN" \
+              --projectId=${{ secrets.INFISICAL_PROJECT_ID }} \
+              --env=dev \
+              --path=/pgbouncer \
+              --domain=http://localhost:8080 \
+              -- sh deploy.sh
+
+            # Only wait for healthy on first deploy (docker compose up path).
+            # On SIGHUP path the container was already healthy before we started.
+            echo "Waiting for pgbouncer to be healthy..."
+            for i in $(seq 1 30); do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' pgbouncer 2>/dev/null || echo "missing")
+              [ "$STATUS" = "healthy" ] && break
+              [ $i -eq 30 ] && echo "Timed out waiting for pgbouncer" && exit 1
+              sleep 2
+            done
+
+            echo "pgbouncer is up."
