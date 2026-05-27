@@ -11,10 +11,13 @@ jobs:
     steps:
       - name: Deploy to server via SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          PGBOUNCER_AUTH_PASSWORD: ${{ secrets.PGBOUNCER_AUTH_PASSWORD }}
         with:
           host:     ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key:      ${{ secrets.SERVER_SSH_KEY }}
+          envs:     PGBOUNCER_AUTH_PASSWORD
           script: |
             set -e
             export PATH="$HOME/.local/bin:$PATH"
@@ -31,24 +34,9 @@ jobs:
               cd "$DEPLOY_DIR"
             fi
 
-            # Authenticate with Infisical and get a short-lived token.
-            INFISICAL_TOKEN=$(infisical login \
-              --method=universal-auth \
-              --client-id=${{ secrets.INFISICAL_CLIENT_ID }} \
-              --client-secret=${{ secrets.INFISICAL_CLIENT_SECRET }} \
-              --domain=http://localhost:8080 \
-              --plain --silent)
-
-            # Inject secrets and run deploy.sh.
-            # deploy.sh generates userlist.txt and either SIGHUPs the running
-            # container (no restart, no dropped connections) or starts it fresh.
-            infisical run \
-              --token="$INFISICAL_TOKEN" \
-              --projectId=${{ secrets.INFISICAL_PROJECT_ID }} \
-              --env=dev \
-              --path=/pgbouncer \
-              --domain=http://localhost:8080 \
-              -- sh deploy.sh
+            # deploy.sh generates userlist.txt from PGBOUNCER_AUTH_PASSWORD and
+            # either SIGHUPs the running container (no dropped connections) or starts it fresh.
+            sh deploy.sh
 
             # Only wait for healthy on first deploy (docker compose up path).
             # On SIGHUP path the container was already healthy before we started.
