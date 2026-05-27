@@ -7,7 +7,7 @@ set -e
 # handshake with the postgres backend. This file is never committed (see .gitignore).
 printf '"pgbouncer_auth" "%s"\n' "$PGBOUNCER_AUTH_PASSWORD" > config/userlist.txt
 
-if docker inspect pgbouncer > /dev/null 2>&1; then
+if [ "$(docker inspect pgbouncer --format='{{.State.Running}}' 2>/dev/null)" = "true" ]; then
   # Container is running — reload config in place via SIGHUP.
   # PgBouncer re-reads pgbouncer.ini and userlist.txt immediately.
   # Existing client connections are never dropped.
