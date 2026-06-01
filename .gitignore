@@ -1,5 +1,6 @@
 # Generated at deploy time from Infisical secrets — never commit
 config/userlist.txt
+config/pgbouncer.local.ini
 
 .env
 actions.env
